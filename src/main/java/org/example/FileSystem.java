@@ -71,9 +71,33 @@ public class FileSystem {
     }
 
     public byte[] read(UUID path) {
-        // bierzemy sektory pliku z files
-        // czytamy sektory i weryfikujemy hasze
-        // sklejamy sektory i zwracamy
-        return null;
+        Set<Integer> takenSectors = files.get(path);
+        byte[] content = null;
+
+        for (int takenSector : takenSectors) {
+            byte[] sectorContent = sectors.get(takenSector);
+            byte[] hashedSectorContent = sectorHashes.get(takenSector);
+
+            if (calculateSha256(sectorContent) != hashedSectorContent) {
+                throw new IllegalStateException("Hashes are not matching");
+            }
+
+            if (content == null) {
+                content = sectorContent;
+            } else {
+                content = Bytes.concat(content, sectorContent);
+            }
+        }
+        return content;
+    }
+
+    public void delete(UUID path) {
+        Set<Integer> takenSectors = files.get(path);
+        for (int takenSector : takenSectors) {
+            sectors.remove(takenSector);
+            sectorHashes.remove(takenSector);
+        }
+        this.takenSectors.removeAll(takenSectors);
+        files.remove(path);
     }
 }
