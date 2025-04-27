@@ -78,7 +78,7 @@ public class FileSystem {
             byte[] sectorContent = sectors.get(takenSector);
             byte[] hashedSectorContent = sectorHashes.get(takenSector);
 
-            if (calculateSha256(sectorContent) != hashedSectorContent) {
+            if (!Arrays.equals(calculateSha256(sectorContent), hashedSectorContent)) {
                 throw new IllegalStateException("Hashes are not matching");
             }
 
@@ -99,5 +99,9 @@ public class FileSystem {
         }
         this.takenSectors.removeAll(takenSectors);
         files.remove(path);
+    }
+
+    public Integer getTakenSectorsSize(){
+        return takenSectors.size();
     }
 }
