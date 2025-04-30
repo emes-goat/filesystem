@@ -1,10 +1,13 @@
 package org.example;
 
-import java.io.FileNotFoundException;
+import com.google.common.base.Preconditions;
+
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
+
+import static com.google.common.base.Preconditions.*;
 
 public class FileBasedBlockStorageDevice implements BlockStorageDevice {
 
@@ -12,19 +15,17 @@ public class FileBasedBlockStorageDevice implements BlockStorageDevice {
     private final Path path;
     private final int numberOfBlocks;
 
+    private final byte[] readBuffer = new byte[BLOCK_SIZE];
+
     public FileBasedBlockStorageDevice(Path path, int numberOfBlocks) throws IOException {
-        if (numberOfBlocks <= 0) {
-            throw new IllegalArgumentException("Number of blocks must be positive.");
-        }
+        checkArgument(numberOfBlocks > 0);
         this.path = path;
         this.numberOfBlocks = numberOfBlocks;
 
         long totalSizeBytes = (long) numberOfBlocks * BLOCK_SIZE;
         if (Files.exists(path)) {
             long size = Files.size(path);
-            if (size != totalSizeBytes) {
-                throw new RuntimeException("Size of blocks does not match.");
-            }
+            Preconditions.checkState(size == totalSizeBytes, "Invalid block storage size");
         } else {
             try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "rw")) {
                 if (raf.length() < totalSizeBytes) {
@@ -35,39 +36,24 @@ public class FileBasedBlockStorageDevice implements BlockStorageDevice {
     }
 
     @Override
-    public byte[] read(int blockNumber) throws FileNotFoundException {
+    public byte[] read(int blockNumber) throws IOException {
         validateBlockNumber(blockNumber);
-        long offset = (long) blockNumber * BLOCK_SIZE;
-        byte[] buffer = new byte[BLOCK_SIZE];
 
-        //TODO tu tu tu tu
+        long offset = (long) blockNumber * BLOCK_SIZE;
+
         try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "r")) {
             raf.seek(offset);
-            int bytesRead = raf.read(buffer);
-
-            // If EOF is reached before reading a full block (e.g., file truncated),
-            // fill the remainder with zeros. A fresh file pre-allocated should not hit this.
-            if (bytesRead > 0 && bytesRead < BLOCK_SIZE) {
-                Arrays.fill(buffer, bytesRead, BLOCK_SIZE, (byte) 0);
-            } else if (bytesRead == -1) {
-                // EOF reached immediately (shouldn't happen with pre-allocation)
-                // Return a zeroed buffer consistent with reading an unwritten block.
-                Arrays.fill(buffer, (byte) 0);
-            }
+            int bytesRead = raf.read(readBuffer);
+            Preconditions.checkState(bytesRead == BLOCK_SIZE);
         }
-        return buffer;
+        return readBuffer;
     }
 
     @Override
-    public void write(int blockNumber, byte[] data) {
+    public void write(int blockNumber, byte[] data) throws IOException {
         validateBlockNumber(blockNumber);
-        if (data == null) {
-            throw new IllegalArgumentException("Data to write cannot be null.");
-        }
-        if (data.length != BLOCK_SIZE) {
-            throw new IllegalArgumentException("Data length (" + data.length
-                    + ") must exactly match block size (" + BLOCK_SIZE + ")");
-        }
+        checkArgument(data != null);
+        checkArgument(data.length == BLOCK_SIZE);
 
         long offset = (long) blockNumber * BLOCK_SIZE;
 
@@ -78,9 +64,7 @@ public class FileBasedBlockStorageDevice implements BlockStorageDevice {
     }
 
     private void validateBlockNumber(int blockNumber) {
-        if (blockNumber < 0 || blockNumber >= this.numberOfBlocks) {
-            throw new IndexOutOfBoundsException("Block number " + blockNumber
-                    + " is out of range [0, " + (this.numberOfBlocks - 1) + "]");
-        }
+        checkArgument(blockNumber >= 0 && blockNumber < this.numberOfBlocks,
+                "Block must be between 0 and " + (numberOfBlocks - 1));
     }
 }

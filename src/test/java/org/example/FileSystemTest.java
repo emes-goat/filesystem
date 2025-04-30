@@ -14,7 +14,7 @@ public class FileSystemTest {
 
     FileSystem fileSystem = new FileSystem();
 
-    public FileSystemTest() throws NoSuchAlgorithmException {
+    public FileSystemTest() throws NoSuchAlgorithmException, IOException {
     }
 
     @Test
@@ -38,7 +38,5 @@ public class FileSystemTest {
         fileSystem.delete(content2UUID);
 
         Assertions.assertEquals(0, fileSystem.getTakenSectorsSize());
-
     }
-
 }

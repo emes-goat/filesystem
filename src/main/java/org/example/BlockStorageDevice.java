@@ -1,10 +1,10 @@
 package org.example;
 
-import java.io.FileNotFoundException;
+import java.io.IOException;
 
 public interface BlockStorageDevice {
 
-    public byte[] read(int blockNumber) throws FileNotFoundException;
+    byte[] read(int blockNumber) throws IOException;
 
-    public void write(int blockNumber, byte[] data);
+    void write(int blockNumber, byte[] data) throws IOException;
 }
