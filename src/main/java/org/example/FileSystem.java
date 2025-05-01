@@ -1,5 +1,6 @@
 package org.example;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.ImmutableIntArray;
@@ -13,8 +14,7 @@ import java.util.*;
 public class FileSystem {
 
     private final Integer DISK_SIZE = 5 * 1024 * 1024;
-    private final Integer SECTOR_SIZE = 4 * 1024;
-    private final Integer SECTOR_COUNT = DISK_SIZE / SECTOR_SIZE;
+    private final Integer SECTOR_COUNT = DISK_SIZE / Constants.BLOCK_SIZE;
 
     private final Map<Integer, byte[]> dataBlocksHashes = new HashMap<>();
     private final BitSet dataBlockAvailability = new BitSet(SECTOR_COUNT);
@@ -29,25 +29,23 @@ public class FileSystem {
     }
 
     public void save(UUID path, byte[] content) throws IOException {
-        int requiredSectors = (int) Math.ceil((double) content.length / (double) SECTOR_SIZE);
-        List<List<Byte>> chunkedContent = Lists.partition(Bytes.asList(content), SECTOR_SIZE);
+        int requiredSectors = (int) Math.ceil((double) content.length / (double) Constants.BLOCK_SIZE);
 
-        ImmutableIntArray assignedSectors = findAvailableSectors(requiredSectors);
-
-        if (chunkedContent.size() != assignedSectors.length()) {
-            throw new RuntimeException("Chunked content size mismatch");
-        }
+        List<List<Byte>> chunkedContent = Lists.partition(Bytes.asList(content), Constants.BLOCK_SIZE);
+        ImmutableIntArray assignedBlocks = findAvailableSectors(requiredSectors);
+        Preconditions.checkState(chunkedContent.size() == assignedBlocks.length());
 
         for (int i = 0; i < chunkedContent.size(); i++) {
             byte[] sectorBytes = Bytes.toArray(chunkedContent.get(i));
+            if (sectorBytes.length != Constants.BLOCK_SIZE) {
+                sectorBytes = Arrays.copyOf(sectorBytes, Constants.BLOCK_SIZE);
+            }
             byte[] hashSha256 = calculateSha256(sectorBytes);
-
-            storage.write(assignedSectors.get(i), sectorBytes); //TODO extend to whole sector
-            //TODO calculate hash over whole sector
-            dataBlocksHashes.put(assignedSectors.get(i), hashSha256);
+            storage.write(assignedBlocks.get(i), sectorBytes);
+            dataBlocksHashes.put(assignedBlocks.get(i), hashSha256);
         }
 
-        files.put(path, new Inode(assignedSectors, (long) content.length));
+        files.put(path, new Inode(assignedBlocks, content.length));
     }
 
     private ImmutableIntArray findAvailableSectors(int requiredSectors) {
@@ -66,25 +64,24 @@ public class FileSystem {
     }
 
     public byte[] read(UUID path) throws IOException {
-        Inode fileSectors = files.get(path);
-        byte[] content = null;
+        Inode inode = files.get(path);
 
-        for (int i = 0; i < fileSectors.dataBlocksNumbers().length(); i++) {
-            byte[] sectorContent = storage.read(fileSectors.dataBlocksNumbers().get(i));
-            byte[] hashedSectorContent = dataBlocksHashes.get(fileSectors.dataBlocksNumbers().get(i));
-            //TODO in last dataBlock read bytes only up to length of metadata size
+        byte[] content = new byte[inode.byteSize()];
+        for (int i = 0; i < inode.dataBlocksNumbers().length(); i++) {
+            int dataBlockNumber = inode.dataBlocksNumbers().get(i);
+            byte[] block = storage.read(dataBlockNumber);
+            byte[] currentBlockHash = calculateSha256(block);
+            byte[] blockHash = dataBlocksHashes.get(dataBlockNumber);
+            Preconditions.checkState(Arrays.equals(currentBlockHash, blockHash));
 
-            if (!Arrays.equals(calculateSha256(sectorContent), hashedSectorContent)) {
-                throw new IllegalStateException("Hashes are not matching");
-            }
+            long offset = (long) i * Constants.BLOCK_SIZE;
 
-            if (content == null) {
-                content = sectorContent;
+            if (i != inode.dataBlocksNumbers().length() - 1) {
+                System.arraycopy(block, 0, content, (int) offset, block.length);
             } else {
-                content = Bytes.concat(content, sectorContent);
+                System.arraycopy(block, 0, content, (int) offset, inode.lastBlockSize());
             }
         }
-
         return content;
     }
 
